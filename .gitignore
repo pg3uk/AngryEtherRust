@@ -1,0 +1,45 @@
+# Rust build artifacts
+/target/
+/release/
+**/*.rs.bk
+# Note: Cargo.lock should be committed for binary projects
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Scan result files
+*.json
+scan_results/
+logs/
+
+# Test output
+test_results/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*.backup
+
+# Custom ports files (keep default)
+/ports/custom_*.txt
+
+# Environment files
+.env
+.env.local

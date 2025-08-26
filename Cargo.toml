@@ -1,0 +1,26 @@
+[package]
+name = "angryether"
+version = "1.0.0"
+edition = "2021"
+authors = ["Peter Garrod"]
+description = "Network scanner for host discovery and port scanning"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+surge-ping = "0.8"
+ipnetwork = "0.20"
+if-addrs = "0.10"
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+colored = "2.0"
+futures = "0.3"
+rand = "0.8"
+pnet = "0.34"
+pnet_datalink = "0.34"
+pnet_packet = "0.34"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.0"
