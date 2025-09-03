@@ -161,7 +161,7 @@ Installation:
 Run: sudo ./install.sh
 
 For support and documentation:
-https://github.com/your-repo/AngryEtherRust
+https://github.com/pg3uk/AngryEtherRust
 EOF
 
 # Create compressed archive
