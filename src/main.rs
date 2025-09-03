@@ -146,12 +146,6 @@ async fn main() -> Result<()> {
     let timeout_ms = *matches.get_one::<u64>("timeout").unwrap();
     let json_output = matches.get_one::<String>("json");
 
-    // Create assets directory and banner file if they don't exist
-    fs::create_dir_all("assets").ok();
-    if !std::path::Path::new("assets/banner.txt").exists() {
-        fs::write("assets/banner.txt", BANNER)?;
-    }
-
     // Get local subnet
     let subnet = match get_local_subnet(interface) {
         Ok(subnet) => {
