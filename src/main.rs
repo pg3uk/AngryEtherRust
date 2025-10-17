@@ -4,7 +4,7 @@ mod ping;
 mod portscan;
 
 use anyhow::Result;
-use arp::ArpScanner;
+use arp::{ArpScanner, read_system_arp_cache};
 use chrono::{DateTime, Utc};
 use clap::{Arg, Command};
 use colored::*;
@@ -12,14 +12,15 @@ use network::{get_local_subnet, get_network_hosts, list_interfaces};
 use ping::PingScanner;
 use portscan::{read_ports_from_file, PortScanner};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::fs;
+use std::net::Ipv4Addr;
 
 const BANNER: &str = r#"
 ░█▀█░█▀█░█▀▀░█▀▄░█░█░█▀▀░▀█▀░█░█░█▀▀░█▀▄
 ░█▀█░█░█░█░█░█▀▄░░█░░█▀▀░░█░░█▀█░█▀▀░█▀▄
 ░▀░▀░▀░▀░▀▀▀░▀░▀░░▀░░▀▀▀░░▀░░▀░▀░▀▀▀░▀░▀
-                    Network Scanner v1.0
+                    Network Scanner v1.0.1
 "#;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,6 +32,7 @@ struct OpenPort {
 #[derive(Serialize, Deserialize, Debug)]
 struct HostResult {
     ip: String,
+    mac_address: Option<String>,
     discovery_method: String,
     open_ports: Vec<OpenPort>,
 }
@@ -74,7 +76,7 @@ fn get_default_ports_file() -> String {
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = Command::new("AngryEther")
-        .version("1.0.0")
+        .version("1.0.1")
         .about("Network scanner for host discovery and port scanning")
         .arg(
             Arg::new("interface")
@@ -163,11 +165,12 @@ async fn main() -> Result<()> {
     println!("Scanning {} hosts in subnet...", hosts.len());
 
     let mut active_hosts = HashSet::new();
+    let mut mac_addresses: HashMap<Ipv4Addr, String> = HashMap::new();
 
     if !arp_only {
         // Initialize ping scanner
         let ping_scanner = PingScanner::new()?;
-        
+
         // Perform ping sweep
         println!("Performing enhanced ping sweep (ICMP + TCP fallback, {}ms timeout per host)...", timeout_ms);
         let ping_hosts = ping_scanner.sweep(hosts.clone(), timeout_ms).await;
@@ -184,10 +187,12 @@ async fn main() -> Result<()> {
             Ok(mut arp_scanner) => {
                 let arp_hosts = arp_scanner.sweep(hosts).await;
                 let arp_count = arp_hosts.len();
-                for host in arp_hosts {
-                    active_hosts.insert(host);
+                for (ip, mac) in &arp_hosts {
+                    active_hosts.insert(*ip);
+                    mac_addresses.insert(*ip, mac.to_string());
                 }
                 println!("Found {} hosts via ARP scan", arp_count);
+                println!("Collected {} MAC addresses", mac_addresses.len());
                 println!("Total unique hosts: {}", active_hosts.len());
             }
             Err(e) => {
@@ -202,10 +207,27 @@ async fn main() -> Result<()> {
     }
 
     let active_hosts: Vec<_> = active_hosts.into_iter().collect();
-    
+
     if active_hosts.is_empty() {
         println!("No active hosts found.");
         return Ok(());
+    }
+
+    // Try to fill in missing MAC addresses from system ARP cache
+    if enable_arp || arp_only {
+        let system_cache = read_system_arp_cache();
+        let mut cache_hits = 0;
+        for host in &active_hosts {
+            if !mac_addresses.contains_key(host) {
+                if let Some(mac) = system_cache.get(host) {
+                    mac_addresses.insert(*host, mac.clone());
+                    cache_hits += 1;
+                }
+            }
+        }
+        if cache_hits > 0 {
+            println!("Filled {} MAC addresses from system ARP cache", cache_hits);
+        }
     }
 
     println!("\nProceeding with {} active hosts for port scanning", active_hosts.len());
@@ -230,14 +252,16 @@ async fn main() -> Result<()> {
     let mut scan_results = Vec::new();
     
     for host in &active_hosts {
-        let open_ports_data = port_scanner.scan_ports(*host, &ports).await;
+        let mac_addr = mac_addresses.get(host);
+        let open_ports_data = port_scanner.scan_ports(*host, &ports, mac_addr.map(|s| s.as_str())).await;
         let open_ports: Vec<OpenPort> = open_ports_data
             .into_iter()
             .map(|(port, banner)| OpenPort { port, banner })
             .collect();
-            
+
         scan_results.push(HostResult {
             ip: host.to_string(),
+            mac_address: mac_addr.cloned(),
             discovery_method: "ICMP/TCP".to_string(), // Simplified for now
             open_ports,
         });

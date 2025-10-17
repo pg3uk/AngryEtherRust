@@ -243,16 +243,19 @@ impl PortScanner {
         }
     }
 
-    pub async fn scan_ports(&self, ip: Ipv4Addr, ports: &[u16]) -> Vec<(u16, String)> {
-        println!("{} is online", ip.to_string().green());
-        
+    pub async fn scan_ports(&self, ip: Ipv4Addr, ports: &[u16], mac_address: Option<&str>) -> Vec<(u16, String)> {
+        let mac_display = mac_address
+            .map(|mac| format!(" [MAC: {}]", mac))
+            .unwrap_or_default();
+        println!("{} is online{}", ip.to_string().green(), mac_display.cyan());
+
         let scan_futures = ports.iter().map(|&port| async move {
             self.check_port(ip, port).await
         });
 
         let results = join_all(scan_futures).await;
         let mut open_ports = Vec::new();
-        
+
         for result in results {
             if let Some((port, banner)) = result {
                 let banner_display = if banner.is_empty() {
@@ -264,7 +267,7 @@ impl PortScanner {
                 open_ports.push((port, banner));
             }
         }
-        
+
         open_ports
     }
 }

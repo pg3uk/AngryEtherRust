@@ -7,13 +7,14 @@ A high-performance network scanner written in Rust for comprehensive host discov
 - **Multi-method Host Discovery**
   - Enhanced ICMP ping with TCP fallback
   - Lightning-fast ARP scanning (100-200x faster than traditional methods)
+  - MAC address detection via ARP
   - Configurable timeouts for different network conditions
 - **Advanced Port Scanning**
   - Multi-threaded TCP port scanning with intelligent banner grabbing
   - Service detection for HTTP, SSH, FTP, SMTP, and more
   - Concurrent scanning with controlled rate limiting
 - **Flexible Output Options**
-  - Colorized real-time terminal output
+  - Colorized real-time terminal output with MAC addresses
   - Structured JSON export for automation and reporting
   - Comprehensive scan metadata and timestamps
 - **Network Interface Management**
@@ -34,10 +35,24 @@ A high-performance network scanner written in Rust for comprehensive host discov
 
 ### Building from source
 ```bash
-git clone <repository>
-cd AngryEther
+git clone https://github.com/pg3uk/AngryEtherRust.git
+cd AngryEtherRust
 cargo build --release
 ```
+
+### Using the build script
+The project includes a comprehensive build script that creates release packages:
+```bash
+# Build optimized release with installation scripts
+./build_release.sh
+```
+
+This creates a complete release package with:
+- Optimized binary
+- Installation and uninstallation scripts
+- Usage examples
+- Default port configurations
+- Checksums for verification
 
 ## Usage
 
@@ -83,8 +98,25 @@ sudo ./target/release/angryether --arp -t 1000 -j detailed_scan.json
 sudo ./target/release/angryether --arp-only -t 200 -j quick_scan.json
 ```
 
+### Installation via build script
+After building with `./build_release.sh`, you can install system-wide:
+```bash
+cd release/angryether-v1.0.0-*/
+sudo ./install.sh
+```
+
+This installs:
+- Binary to `/usr/local/bin/angryether`
+- Port configurations to `/usr/local/share/angryether/ports/`
+- System-wide access via `sudo angryether`
+
+To uninstall:
+```bash
+sudo ./uninstall.sh
+```
+
 ### Command-line options
-- `-i, --interface <INTERFACE>`: Network interface to scan (default: enp37s0)
+- `-i, --interface <INTERFACE>`: Network interface to scan (auto-detected by default)
 - `-p, --ports <PORTS_FILE>`: Path to ports file (default: ports/10000.txt)
 - `-t, --timeout <MILLISECONDS>`: Timeout for ping operations (default: 500ms)
 - `--arp`: Enable ARP scanning in addition to ICMP ping
@@ -114,6 +146,7 @@ When using the `-j` flag, results are saved in structured JSON format:
   "hosts": [
     {
       "ip": "192.168.1.1",
+      "mac_address": "aa:bb:cc:dd:ee:ff",
       "discovery_method": "ICMP/TCP",
       "open_ports": [
         {
@@ -129,6 +162,8 @@ When using the `-j` flag, results are saved in structured JSON format:
   ]
 }
 ```
+
+**Note**: The `mac_address` field is only populated when ARP scanning is enabled (`--arp` or `--arp-only`). For hosts discovered via ICMP/TCP ping only, this field will be `null`.
 
 This format is ideal for:
 - Automation and scripting
@@ -167,6 +202,36 @@ AngryEther ARP scanning: `256 hosts × 100μs + 200ms = 1-2 seconds`
 4. **Short Response Window**: 200ms total collection time vs 1000ms per host
 5. **Concurrent Port Scanning**: Multiple TCP connections with intelligent banner grabbing
 
+## Project Structure
+
+```
+AngryEtherRust/
+├── src/
+│   ├── main.rs          # Main application and CLI handling  
+│   ├── network.rs       # Network interface management
+│   ├── ping.rs          # ICMP and TCP ping implementation
+│   ├── arp.rs           # Lightning-fast ARP scanning
+│   └── portscan.rs      # Port scanning and banner grabbing
+├── ports/
+│   └── 10000.txt        # Default port list (top 10,000)
+├── assets/
+│   └── banner.txt       # Application banner
+├── build_release.sh     # Comprehensive build script
+├── Cargo.toml          # Rust dependencies and metadata
+└── README.md           # This file
+```
+
+## Contributing
+
+This project is written in Rust and uses:
+- **Tokio**: Async runtime for concurrent operations
+- **surge-ping**: Cross-platform ICMP ping
+- **pnet**: Low-level network packet manipulation  
+- **clap**: Command-line argument parsing
+- **serde**: JSON serialization for output
+
 ## Security Note
 
 This tool is designed for legitimate network security assessment and monitoring purposes. Users are responsible for ensuring they have proper authorization before scanning networks they do not own or administer.
+
+**Important**: Root privileges are required for ICMP ping and ARP scanning functionality due to raw socket requirements.

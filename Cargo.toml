@@ -1,6 +1,6 @@
 [package]
 name = "angryether"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Peter Garrod"]
 description = "Network scanner for host discovery and port scanning"

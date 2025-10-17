@@ -4,7 +4,9 @@ use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPa
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::Packet;
 use pnet::util::MacAddr;
+use std::collections::HashMap;
 use std::net::Ipv4Addr;
+use std::process::Command;
 use std::time::Instant;
 
 pub struct ArpScanner {
@@ -65,44 +67,44 @@ impl ArpScanner {
     }
 
 
-    pub async fn sweep(&mut self, ip_addresses: Vec<Ipv4Addr>) -> Vec<Ipv4Addr> {
+    pub async fn sweep(&mut self, ip_addresses: Vec<Ipv4Addr>) -> Vec<(Ipv4Addr, MacAddr)> {
         // Use the new fast batch scanning method
         self.fast_arp_sweep(ip_addresses).await
     }
 
-    pub async fn fast_arp_sweep(&mut self, ip_addresses: Vec<Ipv4Addr>) -> Vec<Ipv4Addr> {
-        use std::collections::HashSet;
+    pub async fn fast_arp_sweep(&mut self, ip_addresses: Vec<Ipv4Addr>) -> Vec<(Ipv4Addr, MacAddr)> {
+        use std::collections::HashMap;
         use tokio::time::{sleep, Duration};
-        
+
         if ip_addresses.is_empty() {
             return Vec::new();
         }
 
-        let mut discovered_hosts = HashSet::new();
+        let mut discovered_hosts = HashMap::new();
         let total_targets = ip_addresses.len();
-        
+
         // Send all ARP requests rapidly in batches
         const BATCH_SIZE: usize = 100;
         const BURST_DELAY: Duration = Duration::from_micros(100); // 100μs between packets
         const RESPONSE_WINDOW: Duration = Duration::from_millis(200); // Total response collection time
-        
+
         println!("Sending {} ARP requests...", total_targets);
-        
+
         // Send all requests in batches
         for chunk in ip_addresses.chunks(BATCH_SIZE) {
             for &ip in chunk {
                 let arp_request = self.create_arp_request(ip);
                 let _ = self.sender.send_to(&arp_request, None);
-                
+
                 // Small delay to avoid overwhelming the network interface
                 sleep(BURST_DELAY).await;
             }
         }
-        
+
         // Collect responses for a short window
         let start_time = Instant::now();
         let mut responses_received = 0;
-        
+
         while start_time.elapsed() < RESPONSE_WINDOW {
             // Try to read multiple packets in a tight loop
             for _ in 0..50 { // Read up to 50 packets per iteration
@@ -113,8 +115,9 @@ impl ArpScanner {
                                 if let Some(arp_packet) = ArpPacket::new(ethernet_packet.payload()) {
                                     if arp_packet.get_operation() == ArpOperations::Reply {
                                         let sender_ip = arp_packet.get_sender_proto_addr();
+                                        let sender_mac = arp_packet.get_sender_hw_addr();
                                         if ip_addresses.contains(&sender_ip) {
-                                            discovered_hosts.insert(sender_ip);
+                                            discovered_hosts.insert(sender_ip, sender_mac);
                                             responses_received += 1;
                                         }
                                     }
@@ -125,16 +128,40 @@ impl ArpScanner {
                     Err(_) => break, // No more packets available right now
                 }
             }
-            
+
             // Very short sleep to allow more responses to arrive
             sleep(Duration::from_millis(1)).await;
         }
-        
+
         println!("ARP scan completed: {} responses received", responses_received);
         discovered_hosts.into_iter().collect()
     }
 }
 
+/// Read MAC addresses from the system's ARP cache
+pub fn read_system_arp_cache() -> HashMap<Ipv4Addr, String> {
+    let mut cache = HashMap::new();
+
+    // Try to read from /proc/net/arp on Linux
+    if let Ok(output) = Command::new("cat").arg("/proc/net/arp").output() {
+        if let Ok(content) = String::from_utf8(output.stdout) {
+            for line in content.lines().skip(1) { // Skip header
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 4 {
+                    if let Ok(ip) = parts[0].parse::<Ipv4Addr>() {
+                        let mac = parts[3].to_string();
+                        // Only add if it's a valid MAC (not incomplete)
+                        if mac != "00:00:00:00:00:00" && mac.contains(':') && mac.len() == 17 {
+                            cache.insert(ip, mac);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    cache
+}
 
 #[cfg(test)]
 mod tests {
